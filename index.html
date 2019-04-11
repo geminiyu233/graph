@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>拓扑图</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: #fff;
+    }
+    
+    .map {
+      margin-left: 100px;
+      margin-right: 30px;
+      overflow: hidden;
+    }
+    .map-background {
+      fill: none;
+      pointer-events: all;
+    }
+    text {
+      display: -webkit-box;
+      display: -ms-flexbox;
+      display: flex;
+      -ms-flex-line-pack: center;
+      align-content: center;
+      font-family: Microsoft YaHei;
+      font-weight: bold;
+      pointer-events: none;
+    }
+    .inactive {
+      opacity: .2;
+    }
+    .link {
+      fill: #666;
+      stroke: #666;
+      stroke-width: 1.5px;
+    }
+    .linetext {
+      font-size: 12px;
+      font-family: Microsoft YaHei;
+    }
+    .highlighted {
+      -webkit-filter: url(#filter);
+      filter: url(#filter);
+    }
+  </style>
+</head>
+<body>
+  <div class="map"></div>
+</body>
+<script src="./d3.min.js"></script>
+<script>
+  const data = [{
+        "source": "前端",
+        "target": "框架",
+        "attr": "事件",
+        "rela": "关系",
+        "elementId": 1
+      }, {
+        "source": "框架",
+        "target": "Vue",
+        "attr": "关系",
+        "rela": "关系",
+        "elementId": 2
+      },
+      {
+        "source": "框架",
+        "target": "React",
+        "attr": "关系",
+        "rela": "关系",
+        "elementId": 8
+      },
+      {
+        "source": "框架",
+        "target": "Angular",
+        "attr": "关系",
+        "rela": "关系",
+        "elementId": 10
+      },
+      {
+        "source": "前端",
+        "target": "HTML/CSS",
+        "attr": "事件",
+        "rela": "关系",
+        "elementId": 11
+      },
+      {
+        "source": "前端",
+        "target": "JS",
+        "attr": "事件",
+        "rela": "关系",
+        "elementId": 14
+      }];
+  const graph = {
+    nodes: [],
+    links: [],
+    scaleRate: 1,
+    categoryKeys: ["案件", "人物", "关系", "事件", "属性"]
+  };
+  const status = {
+    imageWidth: window.innerWidth - 17,
+    imageHeight: window.innerHeight
+  }
+  _getNodes(data);
+  _render(status.imageWidth, status.imageHeight, graph.nodes, graph.links);
+
+  /**
+   * 处理数据，归类nodes数据及links数据
+   * @param {*} caseData 
+   */
+  function _getNodes(caseData) {
+    let nodes = graph.nodes;
+    let links = graph.links = caseData;
+    links.forEach(function(link) {
+      link.source = nodes[link.source] || (nodes[link.source] = {
+          name: link.source,
+          attr: link.attr,
+          elementId: link.elementId
+      });
+      link.target = nodes[link.target] || (nodes[link.target] = {
+        name: link.target,
+        attr: link.attr,
+        elementId: link.elementId
+      });
+    });
+  }
+
+
+  //绘制知识图谱
+  function _render(width, height, nodes, links) {
+    graph.scaleRate = (width * height) / (1800 * 1800); //默认缩放比例
+
+    const colors = ["#ee7378", "#7e6afe", "#628ee4", "#30d08e", "#aaa"]; //节点颜色组
+    graph.nodesColor = _getColorScale(0.4, colors); //根据节点attr设置节点颜色
+    graph.nodesColorInactive = _getColorScale(-0.8, colors); //置灰状态的颜色
+
+    graph.nodesR = getCircleR(); //根据level设置圆半径
+    graph.fontSize = getFontSize(); //设置节点字体大小
+
+    d3.values(nodes)[0].x = width / 2;
+    d3.values(nodes)[0].y = height / 2;
+    d3.values(nodes)[0].fixed = true;
+    d3.values(nodes)[0].attr = '案件';
+
+    graph.force = d3.layout.force()
+      .nodes(d3.values(nodes))
+      .links(links)
+      .size([width, height])
+      .linkDistance(d => graph.nodesR(d.attr) + 100)
+      .gravity(0) //没有重力
+      .charge(-2000)
+      .on("tick", tick)
+      .start();
+
+    //定义缩放事件
+    let zoom = d3.behavior.zoom()
+      .scaleExtent([1, 2])
+      .on("zoom", zoomed);
+
+    function zoomed() {
+      graph.svg.attr("transform", `translate(${d3.event.translate})scale(${d3.event.scale})`);
+    }
+
+    //定义拖拽事件
+    let drag = graph.force.drag()
+      .on("dragstart", d => {
+        d3.event.sourceEvent.stopPropagation();
+        d.fixed = true; //拖拽开始后设定被拖拽对象为固定
+      });
+
+    //移除已渲染
+    d3.select(".map svg").remove();
+
+    //添加画布svg，对画布进行缩放
+    graph.svg = d3.select(".map").append("svg")
+      .attr({
+        'width': width,
+        'height': height
+      })
+      .call(zoom)
+      .append("g");
+
+    //添加捕获鼠标事件的背景
+    graph.svg.append("rect")
+      .attr({
+        'width': width,
+        'height': height,
+        'class': 'map-background'
+      });
+
+    //改变装图谱直接容器的缩放中心点，默认缩小到刚好显示完图谱
+    graph.container = graph.svg.append("g")
+      .attr({
+        'transform-origin': `${width/2}px ${height/2}px 0px`,
+        'transform': `scale(${graph.scaleRate})`
+      });
+
+    //(1)创建箭头  
+    graph.linesMarkers = graph.container.append("svg:defs").selectAll("marker")
+      .data(graph.force.links())
+      .enter().append("svg:marker")
+      .attr({
+        'id': d => `marker-${d.elementId}`,
+        'viewBox': '0 -5 10 10',
+        'refX': d => graph.nodesR(d.target.attr) + 2,
+        'refY': 0,
+        'markerWidth': 12,
+        'markerHeight': 12,
+        'orient': 'auto'
+      })
+      .append("svg:path")
+      .attr({
+        'd': 'M0,-5L10,0L0,5',
+        'fill': '#666'
+      }); //箭头颜色;
+
+    graph.defs = graph.container.append("svg:defs").selectAll("filter")
+      .data(graph.force.links())
+      .enter().append("svg:filter")
+      .attr({
+        'filterUnits':'userSpaceOnUse',
+        'id': d => `filter`,
+        'x': -100,
+        'y': -100,
+        'width': '160%',
+        'height': '160%'
+      });
+    graph.feGaussianBlur = graph.defs.append('feGaussianBlur')
+      .attr({
+        'stdDeviation': 1
+      });
+
+      graph.feGaussianBlur.append('animate')
+      .attr({
+        'id':'filter-anim-in',
+        'attributeName':'stdDeviation',
+        'attributeType':'XML',
+        'begin':'0s',
+        'dur':'4s',
+        'fill':'freeze',
+        'from':'6',
+        'to':'1',
+        'repeatCount':'indefinite'
+      });
+
+    //(2)根据连线类型,引用上面创建的标记  
+    graph.lines = graph.container.append("g").selectAll("path")
+      .data(d3.values(graph.force.links()))
+      .enter().append("path")
+      .attr({
+        'fill': '#666',
+        'stroke': '#666',
+        'id': (d, i) => `edgepath${i}`,
+        'marker-end': d => `url(#marker-${d.elementId})`
+      });
+
+    //(3)设置线条上的文字
+    graph.linesText = graph.container.append("g").selectAll(".edgelabel")
+      .data(graph.force.links())
+      .enter()
+      .append("text")
+      .style("pointer-events", "none")
+      .attr({
+        'class': 'edgelabel',
+        'id': (d, i) => `edgepath${i}`,
+        'dx': d => graph.nodesR(d.attr) + 40,
+        'dy': 0
+      });
+
+    graph.linesText.append('textPath')
+      .attr('xlink:href', (d, i) => `#edgepath${i}`)
+      .style("pointer-events", "none")
+      .text(d => d.rela);
+
+    //(4)圆圈节点
+    graph.nodes = graph.container.append("g").selectAll("circle")
+      .data(graph.force.nodes())
+      .enter()
+      .append("circle")
+      .style("fill", d => graph.nodesColor(d.attr))
+      .attr("r", d => graph.nodesR(d.attr))
+      .classed("highlighted", d => d.isContradictionsPoint)
+      .call(drag) //将当前选中的元素传到drag函数中，使顶点可以被拖动
+      .on("dblclick", d => {
+        d3.event.stopPropagation();
+        d.fixed = false;
+      })
+      .on('mouseover', d => {
+        if (d.isContradictionsPoint) {
+          highlightObject(d);
+        }
+      })
+      .on('mouseout', () => {
+        highlightObject(null);
+      });
+
+    graph.nodes.each(function (d) {
+      d3.select(this)
+        .append('title')
+        .text(d => d.name)
+    });
+
+    //(4)圆圈节点内文字
+    graph.nodesText = graph.container.append("g").selectAll("text")
+      .data(graph.force.nodes())
+      .enter()
+      .append("text")
+      .attr("dy", ".35em")
+      .style({
+        'text-anchor': 'middle',
+        'fill': '#fff',
+        'font-size': d => graph.fontSize(d.attr)
+      })
+      .attr('x', function (d) {
+        // console.log(d.name+"---"+ d.name.length);
+        // 对文字做折行处理
+        if (d.name.length <= 4) {
+          d3.select(this).append('tspan')
+            .attr({
+              'x': 0,
+              'y': 2
+            })
+            .text(() => d.name)
+            .append('title')
+            .text(d => d.name);
+        } else {
+          let top = d.name.substring(0, 4);
+          d3.select(this).text(() => '');
+          if (d.name.length > 4 && d.name.length <= 8) {
+            d3.select(this).append('tspan')
+              .attr({
+                'x': 0,
+                'y': '-0.5em'
+              })
+              .text(() => top);
+            let bot = d.name.substring(4, 8);
+            d3.select(this).append('tspan')
+              .attr({
+                'x': 0,
+                'y': '1em'
+              })
+              .text(() => bot);
+          } else {
+            let bot = d.name.substring(4, 8);
+            d3.select(this).append('tspan')
+              .attr({
+                'x': 0,
+                'y': '-1em'
+              })
+              .text(() => top);
+            d3.select(this).append('tspan')
+              .attr({
+                'x': 0,
+                'y': '0.6em'
+              })
+              .text(() => bot);
+            let bott = '...';
+            d3.select(this).append('tspan')
+              .attr({
+                'x': 0,
+                'y': '1.5em'
+              })
+              .text(() => bott);
+          }
+        }
+      });
+    function getCircleR() {
+      return d3.scale.ordinal()
+        .domain(graph.categoryKeys)
+        .range([80, 35, 45, 60, 28]);
+    }
+
+    function getFontSize() {
+      return d3.scale.ordinal()
+        .domain(graph.categoryKeys)
+        .range([28, 16, 18, 24, 14]);
+    }
+
+    //图谱运动
+    function tick() {
+      graph.nodes.attr("transform", d => `translate(${d.x},${d.y})`); //设置圆圈和文字的坐标
+      graph.nodesText.attr("transform", d => `translate(${d.x},${d.y})`); //顶点文字
+      graph.lines.attr('d', d => `M ${d.source.x} ${d.source.y} L ${d.target.x} ${d.target.y}`);
+      graph.linesText.attr('transform', function (d) {
+        if (d.target.x < d.source.x) {
+          let bbox = this.getBBox();
+          let rx = bbox.x + bbox.width / 2;
+          let ry = bbox.y + bbox.height / 2;
+          return `rotate(180 ${rx} ${ry})`;
+        } else {
+          return 'rotate(0)';
+        }
+      });
+
+      if (graph.force.alpha < 0.1) {
+        setTimeout(tick, 0);
+      }
+    }
+
+    function highlightObject(obj) {
+      if (obj) {
+        setTimeout(() => {
+          status.currentContradictionId = obj.contradictionsPointIndex;
+        });
+        graph.nodes.style("fill", function (d) {
+          if (obj !== d && d.depends.indexOf(obj.elementId) === -1) {
+            return graph.nodesColorInactive(d.attr);
+          } else {
+            return graph.nodesColor(d.attr);
+          }
+        });
+        graph.lines.classed('inactive', true);
+      } else {
+        graph.nodes.style("fill", function (d) {
+          return graph.nodesColor(d.attr);
+        });
+        graph.lines.classed('inactive', false);
+        setTimeout(() => {
+          status.currentContradictionId = null;
+        });
+      }
+    }
+
+  }
+
+  /**
+   * 颜色比例尺
+   * @param {*} darkness 颜色亮度
+   * @param {*} colors 颜色集合
+   */
+  function _getColorScale(darkness, colors) {
+    return d3.scale.ordinal()
+      .domain(graph.categoryKeys)
+      .range(colors.map(d => {
+        return d3.hsl(d).darker(darkness).toString();
+      }));
+  }
+</script>
+</html>
