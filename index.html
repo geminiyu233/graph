@@ -107,16 +107,16 @@
     imageWidth: window.innerWidth - 17,
     imageHeight: window.innerHeight
   }
-  _getNodes(data);
-  _render(status.imageWidth, status.imageHeight, graph.nodes, graph.links);
+  getNodes(data);
+  render(status.imageWidth, status.imageHeight, graph.nodes, graph.links);
 
   /**
    * 处理数据，归类nodes数据及links数据
-   * @param {*} caseData 
+   * @param {*} data 
    */
-  function _getNodes(caseData) {
+  function getNodes(data) {
     let nodes = graph.nodes;
-    let links = graph.links = caseData;
+    let links = graph.links = data;
     links.forEach(function(link) {
       link.source = nodes[link.source] || (nodes[link.source] = {
           name: link.source,
@@ -133,12 +133,12 @@
 
 
   //绘制知识图谱
-  function _render(width, height, nodes, links) {
+  function render(width, height, nodes, links) {
     graph.scaleRate = (width * height) / (1800 * 1800); //默认缩放比例
 
     const colors = ["#ee7378", "#7e6afe", "#628ee4", "#30d08e", "#aaa"]; //节点颜色组
-    graph.nodesColor = _getColorScale(0.4, colors); //根据节点attr设置节点颜色
-    graph.nodesColorInactive = _getColorScale(-0.8, colors); //置灰状态的颜色
+    graph.nodesColor = getColorScale(0.4, colors); //根据节点attr设置节点颜色
+    graph.nodesColorInactive = getColorScale(-0.8, colors); //置灰状态的颜色
 
     graph.nodesR = getCircleR(); //根据level设置圆半径
     graph.fontSize = getFontSize(); //设置节点字体大小
@@ -146,7 +146,7 @@
     d3.values(nodes)[0].x = width / 2;
     d3.values(nodes)[0].y = height / 2;
     d3.values(nodes)[0].fixed = true;
-    d3.values(nodes)[0].attr = '案件';
+    d3.values(nodes)[0].attr = '中心';
 
     graph.force = d3.layout.force()
       .nodes(d3.values(nodes))
@@ -426,7 +426,6 @@
         });
       }
     }
-
   }
 
   /**
@@ -434,7 +433,7 @@
    * @param {*} darkness 颜色亮度
    * @param {*} colors 颜色集合
    */
-  function _getColorScale(darkness, colors) {
+  function getColorScale(darkness, colors) {
     return d3.scale.ordinal()
       .domain(graph.categoryKeys)
       .range(colors.map(d => {
